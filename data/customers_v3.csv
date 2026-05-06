@@ -1,0 +1,11 @@
+id,name,city,segment,spend,joined_date
+1,Alice Sharma,Mumbai,Premium,21000,2022-01-15
+2,Bob Verma,Delhi,Standard,3200,2022-03-10
+3,Carol Nair,Pune,Premium,9500,2022-05-22
+4,David Iyer,Bangalore,Premium,15000,2022-06-01
+5,Eva Menon,Chennai,Standard,4200,2022-07-19
+6,Frank Das,Kolkata,Standard,4700,2023-01-05
+7,Grace Pillai,Hyderabad,Premium,11000,2023-02-14
+8,Hari Bose,Ahmedabad,Basic,950,2023-06-30
+9,Indira Rao,Surat,Basic,1100,2023-08-11
+10,Jay Kapoor,Jaipur,Standard,5300,2023-09-25
