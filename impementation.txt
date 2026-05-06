@@ -1,0 +1,116 @@
+DVC isn’t tied to a single “platform” the way something like a SaaS tool is. It’s an **open-source tool** you install and run anywhere.
+
+---
+
+## 🧩 Who provides DVC?
+
+DVC is developed by the company
+👉 Iterative.ai
+
+They also build a related platform:
+
+* DVC Studio (for experiment tracking, dashboards)
+
+---
+
+## 🖥️ Where you actually use DVC
+
+You can use DVC on **any platform where Git runs**:
+
+### 1. Local environments
+
+* Your laptop (Linux, Mac, Windows)
+* Dev machines
+
+Install:
+
+```bash
+pip install dvc
+```
+
+---
+
+### 2. Cloud / remote storage (for data)
+
+DVC connects to storage like:
+
+* AWS S3
+* Google Cloud Storage
+* Azure Blob Storage
+* SSH / NFS / on-prem storage
+
+👉 Important: DVC does **not store data itself** — it uses these as backends.
+
+---
+
+### 3. Git platforms (for collaboration)
+
+You combine DVC with:
+
+* GitHub
+* GitLab
+* Bitbucket
+
+Git stores:
+
+* `.dvc` files
+* pipeline definitions
+
+---
+
+### 4. Optional UI / experiment tracking
+
+If you want a UI:
+
+* DVC Studio (by Iterative)
+
+Alternative ecosystems (not DVC-native but often compared):
+
+* MLflow
+* Weights & Biases
+
+---
+
+## 🧠 How to think about it (important)
+
+Don’t look for a “DVC platform” like a hosted service.
+
+Instead:
+
+* DVC = **control layer**
+* Git = **code versioning**
+* S3/GCS/etc = **data storage**
+* Optional UI = **visibility**
+
+---
+
+## ⚠️ Straight answer to your question
+
+> “Which platform gives DVC?”
+
+👉 No platform “gives” DVC.
+👉 You **install DVC and integrate it into your stack**.
+
+---
+
+## 🧭 Typical real-world setup
+
+A solid production setup looks like:
+
+* GitHub → code
+* DVC → data + pipeline tracking
+* S3 → dataset storage
+* CI/CD → pipeline automation
+* DVC Studio / MLflow → experiment tracking
+
+---
+
+If you're evaluating this as a senior engineer, the real question isn’t *where DVC runs*, but:
+
+👉 *Does my team need reproducibility + data versioning badly enough to justify the added discipline?*
+
+If yes, DVC is one of the cleanest approaches.
+
+---
+
+If you want, I can map this to a **Kubernetes / MLOps architecture (since you were discussing GKE earlier)**—that’s where it gets interesting.

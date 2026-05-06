@@ -1,0 +1,166 @@
+DVC SETUP INSTRUCTIONS
+======================
+
+Prerequisites
+-------------
+- Python 3.8+
+- Git installed and configured
+- uv (Python package manager)
+
+Verify prerequisites:
+  git --version        # should print git version 2.x.x
+  python3 --version    # should print Python 3.8+
+  uv --version         # should print uv 0.x.x
+
+
+1. Install dependencies via uv sync
+------------------------------------
+  A pyproject.toml is included in the project with all required dependencies.
+  Run from the project root:
+
+    uv sync
+
+  This creates a .venv/ and installs:
+    - dvc>=3.0.0
+    - dvc-s3>=3.0.0
+
+  Verify:
+    dvc --version
+    # Expected output: dvc 3.x.x
+
+    uv pip list | grep dvc
+    # Expected: dvc and dvc-s3 listed
+
+
+2. Configure Git identity (skip if already done)
+-------------------------------------------------
+  git config --global user.name "Your Name"
+  git config --global user.email "your@email.com"
+
+  Verify:
+    git config --global user.name
+    git config --global user.email
+
+
+3. Initialize Git in the project
+---------------------------------
+  cd /home/rj/projects/data-version-impl
+  git init
+
+  Verify:
+    ls -a
+    # Expected: .git/ folder present
+
+
+4. Initialize DVC
+-----------------
+  dvc init
+
+  Verify:
+    ls .dvc/
+    # Expected: config  .gitignore  tmp/
+
+    git status
+    # Expected: .dvc/ and .dvcignore shown as new files to commit
+
+
+5. Commit the DVC initialization
+----------------------------------
+  git add .dvc .dvcignore
+  git commit -m "init: dvc setup"
+
+  Verify:
+    git log --oneline
+    # Expected: 1 commit
+
+
+6. Set up local remote storage (S3 substitute for local testing)
+----------------------------------------------------------------
+  mkdir -p /tmp/dvc-remote-storage
+  dvc remote add -d localremote /tmp/dvc-remote-storage
+
+  Verify:
+    cat .dvc/config
+    # Expected:
+    #   [core]
+    #       remote = localremote
+    #   ['remote "localremote"']
+    #       url = /tmp/dvc-remote-storage
+
+  Commit the remote config:
+    git add .dvc/config
+    git commit -m "config: add local DVC remote"
+
+
+7. (Optional) For real AWS S3 remote instead of local
+------------------------------------------------------
+  Install AWS CLI:
+    uv tool install awscli
+    # Do NOT use `pip install awscli` — on Debian/Ubuntu the system Python
+    # is externally managed and pip will error. uv tool installs CLI tools
+    # in an isolated environment.
+
+  Add uv tools to PATH (required once):
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+    source ~/.bashrc
+
+  Verify the install (note: command is `aws`, not `awscli`):
+    aws --version
+    # Expected: aws-cli/1.x.x Python/3.x.x
+
+  Configure credentials:
+    aws configure   # enter Access Key, Secret, region
+
+  Add S3 remote:
+    dvc remote add -d s3remote s3://data-version-impl/dvc-store
+
+  Attach IAM policy to the user (required — no default S3 access):
+    Go to: AWS Console → IAM → Users → <your-user> → Add permissions
+           → Attach policies directly → Create inline policy
+
+    Paste this JSON:
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": ["s3:ListBucket"],
+          "Resource": "arn:aws:s3:::data-version-impl"
+        },
+        {
+          "Effect": "Allow",
+          "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+          "Resource": "arn:aws:s3:::data-version-impl/*"
+        }
+      ]
+    }
+
+    Note: ListBucket targets the bucket ARN, object actions target ARN/*
+    This split is an AWS requirement.
+
+  Authenticate check:
+    aws s3 ls s3://data-version-impl/
+    # Expected: empty output with no error (bucket is empty initially)
+    # Expected: bucket contents listed without error
+
+
+8. Verify full setup
+--------------------
+  Run this checklist:
+
+    git --version          # git is available
+    dvc --version          # dvc is installed
+    cat .dvc/config        # remote is configured
+    git log --oneline      # at least 1 commit exists
+    ls /tmp/dvc-remote-storage/   # remote dir exists (local setup)
+
+  All passing = environment is ready.
+  Proceed to plan.md for the step-by-step implementation.
+
+
+Notes
+-----
+- The local remote (/tmp/dvc-remote-storage) behaves exactly like S3 for
+  learning purposes. Switch to a real S3 bucket when moving to production.
+- Always run `dvc push` after `git commit` to keep code and data in sync.
+- Never manually edit .dvc files — they are managed by DVC.

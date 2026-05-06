@@ -1,0 +1,10 @@
+[project]
+name = "data-version-impl"
+version = "0.1.0"
+description = "DVC hands-on implementation for data versioning"
+requires-python = ">=3.8"
+
+dependencies = [
+    "dvc>=3.0.0",
+    "dvc-s3>=3.0.0",
+]
