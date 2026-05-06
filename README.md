@@ -5,6 +5,102 @@ Demonstrates how Git + DVC + S3 work together to version large data files.
 
 ---
 
+## Tool comparison — DVC vs Pachyderm vs Delta Lake vs LakeFS
+
+### How each tool versions data
+
+| | DVC | Pachyderm | Delta Lake | LakeFS |
+|---|---|---|---|---|
+| **Versioning mechanism** | MD5 hash per file, pointer stored in Git | Internal commit graph (own VCS) | Transaction log (`_delta_log/`) appended on every write | Git-like commits on top of object storage |
+| **Where versions live** | Git (pointers) + S3/GCS (data) | Pachyderm's own object store | Alongside data files in same S3 path | S3/GCS with a metadata layer on top |
+| **Granularity** | File-level | File-level | Row/partition-level (Parquet) | File and directory-level |
+| **Time travel** | `git checkout <hash>` + `dvc pull` | `pachctl get file repo@branch` | `SELECT * FROM table VERSION AS OF 3` | `git checkout` style on lakefs branches |
+
+---
+
+### Feature comparison
+
+| Feature | DVC | Pachyderm | Delta Lake | LakeFS |
+|---|---|---|---|---|
+| **Primary purpose** | Data + ML experiment versioning | Data pipelines + versioning | ACID transactions on data lakes | Git for data lakes |
+| **Git integration** | Tight — `.dvc` files live in Git | None — separate system | None | Mimics Git but separate from code Git |
+| **Pipeline support** | Basic (`dvc.yaml` stages) | First-class, Kubernetes-native | None (storage layer only) | None (storage layer only) |
+| **Storage backend** | S3, GCS, Azure, local, SSH | Built-in (runs on K8s) | S3, ADLS, GCS (Parquet/Delta format) | S3, GCS, Azure |
+| **Data format** | Any file (CSV, Parquet, images, models) | Any file | Parquet only | Any file |
+| **ACID transactions** | No | No | Yes | No |
+| **Branching** | Via Git branches | Native branches | Table clones (shallow) | Full branch/merge/PR |
+| **Setup complexity** | Low — `pip install dvc` | High — requires Kubernetes cluster | Medium — needs Spark or Delta engine | Medium — runs as a proxy over S3 |
+| **Scale** | Small to medium datasets | Large-scale pipelines | Petabyte-scale tabular data | Large data lakes |
+| **ML experiment tracking** | Yes (with DVC Studio) | No | No | No |
+
+---
+
+### How each tool resolves "give me version 2 of this data"
+
+**DVC**
+```
+git checkout <commit> -- data/customers.csv.dvc
+         ↓
+reads md5 hash from .dvc file
+         ↓
+dvc pull → downloads s3://bucket/dvc-store/files/md5/<hash>
+         ↓
+data/customers.csv = exact file from that commit
+```
+
+**Pachyderm**
+```
+pachctl get file customers@v2:/customers.csv
+         ↓
+Pachyderm's internal commit graph resolves v2
+         ↓
+streams file from its internal object store
+```
+
+**Delta Lake**
+```sql
+SELECT * FROM customers VERSION AS OF 2
+-- or --
+SELECT * FROM customers TIMESTAMP AS OF '2024-01-15'
+         ↓
+reads _delta_log/000002.json → finds which Parquet files were active
+         ↓
+reads those Parquet files from S3
+```
+
+**LakeFS**
+```bash
+aws s3 cp s3://lakefs-repo/v2-branch/customers.csv .
+         ↓
+LakeFS intercepts the S3 call
+         ↓
+resolves v2-branch → commit → actual object in underlying S3
+```
+
+---
+
+### When to pick which tool
+
+| Situation | Best choice |
+|-----------|-------------|
+| ML project, need code + data versioned together | **DVC** |
+| Need data pipelines that auto-trigger on data changes | **Pachyderm** |
+| Big data / Spark, need ACID + row-level time travel | **Delta Lake** |
+| Large data lake, want Git branching for data (A/B, staging) | **LakeFS** |
+| Simple setup, small team, CSV / model files | **DVC** |
+| Already on Kubernetes, heavy pipeline orchestration | **Pachyderm** |
+
+---
+
+### Key difference in one line each
+
+- **DVC** — Git is the version index; S3 is a dumb file store addressed by hash.
+- **Pachyderm** — Kubernetes-native pipelines where data commits trigger pipeline runs automatically.
+- **Delta Lake** — Adds a transaction log to S3 so Parquet tables get ACID guarantees and SQL time travel.
+- **LakeFS** — Puts a Git-like branch/commit/merge interface in front of your entire S3 bucket.
+
+---
+
 ## Mental model
 
 ```
