@@ -430,6 +430,146 @@ it controls where data lives and which version maps to which Git commit.
 
 ---
 
+## Parquet format — what it is and why it matters
+
+Delta Lake (and most big data tools) use Parquet instead of CSV. Here is what Parquet actually is and why it exists.
+
+---
+
+### What a CSV looks like (row-oriented)
+
+```
+id,name,city,segment,spend,joined_date
+1,Alice Sharma,Mumbai,Premium,15000,2022-01-15
+2,Bob Verma,Delhi,Standard,3200,2022-03-10
+3,Carol Nair,Pune,Premium,9500,2022-05-22
+4,David Iyer,Bangalore,Premium,12500,2022-06-01
+```
+
+On disk, data is stored **row by row**. To get the `spend` column for all rows,
+the engine must read every row and extract one field from each.
+
+---
+
+### What Parquet looks like (columnar)
+
+Parquet is a binary format — you cannot read it with `cat`. Internally it stores data **column by column**:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Row Group 1  (e.g. rows 1–1000)                        │
+│                                                         │
+│  Column: id        → [1, 2, 3, 4, ...]                  │
+│  Column: name      → [Alice, Bob, Carol, David, ...]    │
+│  Column: city      → [Mumbai, Delhi, Pune, Blore, ...]  │
+│  Column: segment   → [Premium, Standard, Premium, ...]  │
+│  Column: spend     → [15000, 3200, 9500, 12500, ...]    │
+│  Column: joined_dt → [2022-01-15, 2022-03-10, ...]      │
+│                                                         │
+│  Column statistics (stored per column):                 │
+│    spend → min: 950, max: 21000, null_count: 0          │
+│    segment → distinct: [Basic, Standard, Premium]       │
+└─────────────────────────────────────────────────────────┘
+```
+
+Each column chunk is compressed independently using Snappy or GZIP.
+
+---
+
+### Query: `SELECT AVG(spend) FROM customers WHERE segment = 'Premium'`
+
+**With CSV:**
+```
+Read all 6 fields of every row
+→ parse id, name, city, segment, spend, joined_date for ALL rows
+→ filter segment = Premium
+→ compute avg(spend)
+→ I/O: 100% of the file read
+```
+
+**With Parquet:**
+```
+Step 1 — skip columns: only read `segment` and `spend` columns
+Step 2 — skip row groups: use column statistics to skip groups
+         where segment has no "Premium" values
+Step 3 — decompress only those two columns
+→ compute avg(spend)
+→ I/O: potentially 5–10% of the file read
+```
+
+---
+
+### Advantages of Parquet over CSV
+
+| | CSV | Parquet |
+|---|---|---|
+| **Storage layout** | Row-oriented | Column-oriented |
+| **Compression** | None (plain text) | Snappy / GZIP per column (3–10x smaller) |
+| **Schema** | No — inferred at read time | Embedded — column names + types stored in file |
+| **Null handling** | Empty string ambiguity | First-class null encoding |
+| **Read performance** | Must read all columns | Reads only queried columns (column pruning) |
+| **Predicate pushdown** | Not possible | Skips row groups using min/max statistics |
+| **Splittable** | Only with line splitting | Row groups are independently splittable |
+| **Nested data** | Not supported | Supports arrays, maps, structs |
+| **Tool support** | Universal | Spark, Pandas, DuckDB, Athena, BigQuery, Hive |
+
+---
+
+### How much smaller is Parquet in practice?
+
+Using the customers dataset as an example at scale (1 million rows):
+
+```
+customers.csv     →  ~85 MB   (plain text, no compression)
+customers.parquet →  ~11 MB   (Snappy compression + columnar encoding)
+                     ~87% smaller
+```
+
+String columns with low cardinality (like `segment` = Basic/Standard/Premium)
+compress extremely well in Parquet because it uses **dictionary encoding** —
+it stores `[0,1,2,0,1,...]` + a lookup table instead of repeating the strings.
+
+---
+
+### When to use CSV vs Parquet
+
+| Use CSV when | Use Parquet when |
+|---|---|
+| Human needs to read/edit the file | Data is processed by a query engine |
+| Small dataset (< 10 MB) | Dataset is large (> 100 MB) |
+| One-off data exchange | Data is queried repeatedly |
+| Tool only accepts CSV | Using Spark, Athena, DuckDB, Delta Lake |
+| Debugging / inspecting data | Production data pipeline |
+
+---
+
+### Why Delta Lake requires Parquet
+
+Delta Lake adds a transaction log (`_delta_log/`) on top of Parquet files:
+
+```
+delta-table/
+├── _delta_log/
+│   ├── 00000000000000000000.json   ← commit 0: added part-0.parquet
+│   ├── 00000000000000000001.json   ← commit 1: added part-1.parquet
+│   └── 00000000000000000002.json   ← commit 2: deleted part-0.parquet
+├── part-0.parquet
+└── part-1.parquet
+```
+
+Time travel works by replaying the log:
+```sql
+SELECT * FROM customers VERSION AS OF 1
+-- reads log up to commit 1 → knows part-0.parquet was active
+-- skips part-1.parquet (added in commit 1, but reads AS OF that state)
+```
+
+This only works because Parquet files are **immutable** — Delta Lake never
+modifies a Parquet file, it only adds new ones and marks old ones deleted in
+the log. CSV files are mutable text, so this append-only model does not apply.
+
+---
+
 ## Notes
 
 - Never manually edit `.dvc` files — they are managed by DVC.
